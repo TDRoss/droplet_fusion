@@ -1,0 +1,15 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# uv-managed virtual environment (recreated by `uv sync`).
+# Note: uv.lock and .python-version ARE committed for reproducible installs.
+.venv/
+
+# Generated pipeline outputs (recreated by running droplet-fusion).
+output/
+
+# Internal development journal (not user-facing).
+AGENT_PIPELINE_GUIDE.md

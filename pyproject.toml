@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "droplet-fusion"
+version = "0.1.0"
+description = "Analysis pipeline for epi-fluorescence microscopy TIFF time series of merging droplets."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "tifffile",
+    "scikit-image",
+    "matplotlib",
+    "imageio",
+    "imageio-ffmpeg",
+    "tqdm",
+]
+
+# Developer/test tooling, installed automatically by `uv sync` so `uv run pytest` works.
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+droplet-fusion = "droplet_fusion.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]
