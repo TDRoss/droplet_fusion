@@ -573,19 +573,52 @@ def _growth_candidates(corrected: np.ndarray, config: SegmentationConfig) -> lis
     if finite.size == 0 or float(np.ptp(finite)) == 0.0:
         return []
 
-    high_thresholds = [
-        (_image_threshold(finite, config.threshold_method), config.threshold_method),
-        (float(np.percentile(finite, 90.0)), "p90"),
-        (float(np.percentile(finite, 95.0)), "p95"),
-    ]
-
-    # The flood floor is a fraction of the bright seed threshold rather than a
-    # percentile of the frame. Percentile floors collapse to ~0 when the droplet
-    # occupies a small fraction of the crop, which lets the flood escape the
-    # droplet through low-level background residual. Anchoring the floor to the
-    # seed keeps it scaled to the droplet and safely above the background so the
-    # flood grows from a bright core out to a genuine dim halo and then stops.
+    # Flood-fill grows a mask from a bright seed down to a low "floor" threshold,
+    # so that a droplet whose boundary is dimmer than its core is not sliced off
+    # at the core. Which seeds and floor are appropriate depends on how the
+    # droplet's intensity profile meets the background; see growth_floor_mode.
+    image_threshold = _image_threshold(finite, config.threshold_method)
     low_fractions = (0.3, 0.5, 0.7)
+
+    if config.growth_floor_mode == "image_threshold":
+        # Sharp-edged droplets (a flat plateau dropping steeply into background,
+        # the usual epi-fluorescence case). Two things must hold.
+        #
+        # Seeds must sit inside the droplet, so they are percentiles of the
+        # foreground rather than of the whole frame. A frame percentile is only a
+        # droplet level when the droplet fills much of the crop; for a pair
+        # cropped to <10% of the frame, p90/p95 are still background and would
+        # seed the flood from noise.
+        #
+        # The floor is then clamped at the image threshold, which is where the
+        # droplet actually ends. Growing below it can only add background: the
+        # flood propagates out through the dim optical halo and noise until it
+        # happens to stall, producing a ragged envelope well outside the droplet
+        # whose excess varies frame to frame. That corrupts the aspect ratio far
+        # more than it corrupts the area, since the excess is also asymmetric.
+        foreground = finite[finite > image_threshold] if np.isfinite(image_threshold) else finite[:0]
+        high_thresholds = [(image_threshold, config.threshold_method)]
+        if foreground.size:
+            high_thresholds.extend(
+                [
+                    (float(np.percentile(foreground, 50.0)), "fg50"),
+                    (float(np.percentile(foreground, 75.0)), "fg75"),
+                    (float(np.percentile(foreground, 90.0)), "fg90"),
+                ]
+            )
+        background_floor = image_threshold
+    else:
+        # Droplets with a genuinely dim outer region -- a broad faint rim around a
+        # much brighter core -- where the image threshold splits the droplet
+        # itself and clamping the floor there would discard the rim. Seeds and
+        # floor are both taken from the frame, so the flood can reach down to the
+        # rim level.
+        high_thresholds = [
+            (image_threshold, config.threshold_method),
+            (float(np.percentile(finite, 90.0)), "p90"),
+            (float(np.percentile(finite, 95.0)), "p95"),
+        ]
+        background_floor = float("nan")
 
     candidates: list[_CandidateMask] = []
     for high_threshold, high_source in high_thresholds:
@@ -597,6 +630,8 @@ def _growth_candidates(corrected: np.ndarray, config: SegmentationConfig) -> lis
             continue
         for fraction in low_fractions:
             low_threshold = float(high_threshold * fraction)
+            if np.isfinite(background_floor):
+                low_threshold = max(low_threshold, float(background_floor))
             allowed = corrected > low_threshold
             if not np.any(allowed) or low_threshold >= high_threshold:
                 continue

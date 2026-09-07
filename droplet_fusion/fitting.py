@@ -27,6 +27,7 @@ SUMMARY_RESULT_COLUMNS = [
     "tau_fusion_std_s",
     "R_px",
     "R_um",
+    "R_um_std",
     "inverse_capillary_velocity_s_per_um",
     "inverse_capillary_velocity_s_per_m",
     "fit_rmse",
@@ -61,6 +62,7 @@ class RadiusResult:
     n_frames_used: int
     R_px: float
     R_um: float
+    R_um_std: float
     note: str
 
 
@@ -80,6 +82,7 @@ class MovieFitResult:
     tau_fusion_std_s: float
     R_px: float
     R_um: float
+    R_um_std: float
     inverse_capillary_velocity_s_per_um: float
     inverse_capillary_velocity_s_per_m: float
     fit_rmse: float
@@ -242,13 +245,26 @@ def estimate_final_radius(
             n_frames_used=0,
             R_px=float("nan"),
             R_um=float("nan"),
+            R_um_std=float("nan"),
             note="",
         )
 
     selected_rows = valid_area_rows[-n_final_frames:]
-    area_final_px = float(np.median([float(row["area_px"]) for row in selected_rows]))
+    selected_areas = [float(row["area_px"]) for row in selected_rows]
+    area_final_px = float(np.median(selected_areas))
     R_px = float(math.sqrt(area_final_px / math.pi))
     R_um = R_px * um_per_pixel
+
+    # Frame-to-frame spread of the final radius, as the standard error of the
+    # mean of the per-frame radii. The central value stays the median area (which
+    # is robust to a single bad final mask); this is a spread estimate for it, not
+    # a symmetric confidence interval, and it captures only segmentation scatter --
+    # not the systematic choice of where a blurred droplet edge lies.
+    per_frame_R_um = np.sqrt(np.asarray(selected_areas, dtype=np.float64) / math.pi) * um_per_pixel
+    if per_frame_R_um.size > 1:
+        R_um_std = float(np.std(per_frame_R_um, ddof=1) / math.sqrt(per_frame_R_um.size))
+    else:
+        R_um_std = float("nan")
     note = ""
     if len(selected_rows) < n_final_frames:
         note = f"R estimated from {len(selected_rows)} final valid frame(s)"
@@ -260,6 +276,7 @@ def estimate_final_radius(
             n_frames_used=len(selected_rows),
             R_px=R_px,
             R_um=R_um,
+            R_um_std=R_um_std,
             note=note,
         )
 
@@ -269,6 +286,7 @@ def estimate_final_radius(
         n_frames_used=len(selected_rows),
         R_px=R_px,
         R_um=R_um,
+        R_um_std=R_um_std,
         note=note,
     )
 
@@ -336,6 +354,7 @@ def analyze_movie_measurements(
         tau_fusion_std_s=fit.tau_fusion_std_s,
         R_px=radius.R_px,
         R_um=radius.R_um,
+        R_um_std=radius.R_um_std,
         inverse_capillary_velocity_s_per_um=inverse_s_per_um,
         inverse_capillary_velocity_s_per_m=inverse_s_per_m,
         fit_rmse=fit.fit_rmse,

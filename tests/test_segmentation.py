@@ -116,6 +116,10 @@ def test_segment_stack_and_mask_writer_round_trip_binary_uint8_masks(tmp_path):
 
 
 def test_segment_frame_expands_dim_droplet_boundary_beyond_bright_core():
+    # A broad faint rim (+260) around a much brighter core (+1800): the image
+    # threshold lands inside the droplet, so growth must be allowed below it to
+    # recover the rim. That is what growth_floor_mode="frame_percentile" is for;
+    # the default "image_threshold" deliberately stops at the droplet edge.
     shape = (96, 104)
     frame = _gradient_frame(shape)
     full_droplet = _disk_mask(shape, center=(48, 52), radius=20)
@@ -131,6 +135,7 @@ def test_segment_frame_expands_dim_droplet_boundary_beyond_bright_core():
             background_poly_order=1,
             background_mask_dilation_px=12,
             boundary_threshold_percentile=55.0,
+            growth_floor_mode="frame_percentile",
         ),
     )
 
@@ -192,3 +197,29 @@ def test_temporal_segmentation_rejects_single_frame_centroid_jump():
     assert not result.frame_results[1].valid
     assert result.frame_results[1].failure_reason == "no_temporally_consistent_object"
     assert result.frame_results[2].valid
+
+
+def test_growth_floor_stops_at_droplet_edge_for_sharp_edged_droplet():
+    # A sharp-edged droplet (flat plateau, steep edge into background) surrounded
+    # by a dim optical halo, cropped so the droplet covers <10% of the frame --
+    # the regime where frame percentiles are still background. The default
+    # growth floor must stop at the droplet edge rather than flooding the halo.
+    shape = (128, 128)
+    frame = _gradient_frame(shape)
+    droplet = _disk_mask(shape, center=(64, 64), radius=18)
+    yy, xx = np.indices(shape)
+    radius = np.hypot(yy - 64, xx - 64)
+    halo = (radius > 18) & (radius <= 44)
+    frame[halo] += (300.0 * np.exp(-(radius[halo] - 18) / 8.0)).astype(frame.dtype)
+    frame[droplet] += 15000
+
+    config = SegmentationConfig(min_object_area_px=80, background_poly_order=1)
+    result = segment_frame(frame.astype(np.uint16), config)
+
+    assert result.valid
+    droplet_area = np.count_nonzero(droplet)
+    # The mask tracks the droplet, not the halo: no more than a closing radius of slack.
+    assert np.count_nonzero(result.mask) <= 1.3 * droplet_area
+    assert np.count_nonzero(result.mask) >= 0.8 * droplet_area
+    # Nothing well out in the halo is claimed.
+    assert not result.mask[64, 64 + 30]

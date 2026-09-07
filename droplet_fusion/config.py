@@ -11,6 +11,7 @@ FitStartMode = Literal["max_AR", "manual", "first_valid", "decay_onset"]
 ThresholdMethod = Literal["otsu", "yen", "li", "triangle"]
 SegmentationMode = Literal["per_frame", "temporal"]
 OuterEnvelopeMode = Literal["none", "convex_hull"]
+GrowthFloorMode = Literal["image_threshold", "frame_percentile"]
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class SegmentationConfig:
     mask_closing_radius_px: int = 2
     boundary_threshold_percentile: float = 60.0
     outer_envelope_mode: OuterEnvelopeMode = "none"
+    growth_floor_mode: GrowthFloorMode = "image_threshold"
     write_segmentation_qc: bool = True
     large_mask_area_fraction: float = 0.85
     percentile_threshold_fallback: bool = True
@@ -58,6 +60,8 @@ class SegmentationConfig:
             raise ValueError("boundary_threshold_percentile must be between 0 and 100")
         if self.outer_envelope_mode not in {"none", "convex_hull"}:
             raise ValueError("outer_envelope_mode must be 'none' or 'convex_hull'")
+        if self.growth_floor_mode not in {"image_threshold", "frame_percentile"}:
+            raise ValueError("growth_floor_mode must be 'image_threshold' or 'frame_percentile'")
         if not 0.0 < self.large_mask_area_fraction <= 1.0:
             raise ValueError("large_mask_area_fraction must be in (0, 1]")
 

@@ -33,6 +33,7 @@ from droplet_fusion.visualization import (
     write_ar_fit_plot,
     write_inverse_capillary_velocity_summary_plot,
     write_overlay_video,
+    write_tau_vs_radius_plot,
 )
 
 
@@ -169,6 +170,10 @@ def run_pipeline(config: PipelineConfig, *, show_progress: bool = True) -> Pipel
         config.output_dir / "inverse_capillary_velocity_summary.png",
         summary_rows,
     )
+    tau_vs_radius_plot_path, tau_vs_radius_stats = write_tau_vs_radius_plot(
+        config.output_dir / "tau_vs_radius.png",
+        summary_rows,
+    )
 
     run_started_at = datetime.now(timezone.utc).isoformat()
     payload = {
@@ -178,7 +183,9 @@ def run_pipeline(config: PipelineConfig, *, show_progress: bool = True) -> Pipel
         "movies": movie_summaries,
         "summary_results_path": str(summary_path),
         "summary_plot_path": str(summary_plot_path),
+        "tau_vs_radius_plot_path": str(tau_vs_radius_plot_path),
         "dataset_inverse_capillary_velocity_stats": dataset_stats,
+        "dataset_tau_vs_radius_stats": tau_vs_radius_stats,
     }
     config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -187,13 +194,20 @@ def run_pipeline(config: PipelineConfig, *, show_progress: bool = True) -> Pipel
         f"Started at UTC: {run_started_at}",
         "State: visualization",
         f"Input TIFF files: {len(tiff_paths)}",
-        "Implemented: TIFF discovery/loading, temporally scored segmentation, binary mask stack output, segmentation QC CSV, ellipse fitting, frame measurements, AR fitting, R estimation, movie result JSON, summary CSV, AR plots, overlay videos, dataset summary plot",
+        "Implemented: TIFF discovery/loading, temporally scored segmentation, binary mask stack output, segmentation QC CSV, ellipse fitting, frame measurements, AR fitting, R estimation, movie result JSON, summary CSV, AR plots, overlay videos, dataset summary plot, tau vs radius plot",
         (
             "Dataset inverse capillary velocity: "
             f"n={dataset_stats['n_successful']}, "
             f"mean={dataset_stats['mean_inverse_capillary_velocity_s_per_um']} s/um, "
             f"std={dataset_stats['std_inverse_capillary_velocity_s_per_um']} s/um; "
             f"plot: {summary_plot_path}"
+        ),
+        (
+            "Dataset tau vs radius: "
+            f"n={tau_vs_radius_stats['n_points']}, "
+            f"slope={tau_vs_radius_stats['slope_tau_per_radius_s_per_um']} s/um, "
+            f"pearson_r={tau_vs_radius_stats['pearson_r']}; "
+            f"plot: {tau_vs_radius_plot_path}"
         ),
     ]
     for movie_summary in movie_summaries:
@@ -217,6 +231,7 @@ def run_pipeline(config: PipelineConfig, *, show_progress: bool = True) -> Pipel
             "Visualization pipeline completed for "
             f"{len(tiff_paths)} TIFF file(s): wrote masks, frame_measurements.csv, movie_result.json, "
             f"segmentation_qc.csv when enabled, AR_fit.png, overlay videos when enabled, {summary_path}, {summary_plot_path}, "
+            f"{tau_vs_radius_plot_path}, "
             f"{config_path}, and {log_path}."
         ),
     )

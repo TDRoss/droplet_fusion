@@ -12,6 +12,7 @@ from droplet_fusion.pipeline import run_pipeline
 from droplet_fusion.visualization import (
     write_inverse_capillary_velocity_summary_plot,
     write_overlay_video,
+    write_tau_vs_radius_plot,
 )
 
 
@@ -40,9 +41,12 @@ def test_pipeline_writes_visualization_outputs_when_videos_disabled(tmp_path):
     assert (movie_dir / "AR_fit.png").stat().st_size > 0
     assert not (movie_dir / "overlay.mp4").exists()
     assert (tmp_path / "output" / "inverse_capillary_velocity_summary.png").stat().st_size > 0
+    assert (tmp_path / "output" / "tau_vs_radius.png").stat().st_size > 0
 
     payload = json.loads(result.config_path.read_text(encoding="utf-8"))
     assert payload["summary_plot_path"].endswith("inverse_capillary_velocity_summary.png")
+    assert payload["tau_vs_radius_plot_path"].endswith("tau_vs_radius.png")
+    assert payload["dataset_tau_vs_radius_stats"]["n_points"] == 1
     stats = payload["dataset_inverse_capillary_velocity_stats"]
     assert stats["n_successful"] == 1
     assert math.isfinite(stats["mean_inverse_capillary_velocity_s_per_um"])
@@ -97,3 +101,31 @@ def test_summary_plot_reports_mean_and_std(tmp_path):
     assert stats["n_failed_or_nonfinite"] == 1
     assert stats["mean_inverse_capillary_velocity_s_per_um"] == 3.0
     assert stats["std_inverse_capillary_velocity_s_per_um"] == math.sqrt(2.0)
+
+
+def test_tau_vs_radius_plot_reports_slope_and_correlation(tmp_path):
+    rows = [
+        {"filename": "a.tif", "R_um": 2.0, "tau_fusion_s": 1.0, "tau_fusion_std_s": 0.1},
+        {"filename": "b.tif", "R_um": 4.0, "tau_fusion_s": 2.0, "tau_fusion_std_s": float("nan")},
+        {"filename": "bad.tif", "R_um": float("nan"), "tau_fusion_s": float("nan")},
+    ]
+
+    out_path, stats = write_tau_vs_radius_plot(tmp_path / "tau_vs_radius.png", rows)
+
+    assert out_path.exists()
+    assert out_path.stat().st_size > 0
+    assert stats["n_points"] == 2
+    assert stats["n_omitted"] == 1
+    assert stats["slope_tau_per_radius_s_per_um"] == 0.5
+    assert math.isclose(stats["pearson_r"], 1.0)
+
+
+def test_tau_vs_radius_plot_handles_no_valid_points(tmp_path):
+    out_path, stats = write_tau_vs_radius_plot(
+        tmp_path / "tau_vs_radius.png",
+        [{"filename": "bad.tif", "R_um": float("nan"), "tau_fusion_s": float("nan")}],
+    )
+
+    assert out_path.exists()
+    assert stats["n_points"] == 0
+    assert math.isnan(stats["slope_tau_per_radius_s_per_um"])

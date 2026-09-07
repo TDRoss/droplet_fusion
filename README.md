@@ -53,9 +53,21 @@ This creates an isolated environment (`.venv/`), downloads the right Python, and
 every dependency. It can take a few minutes the first time. You only need to do this once
 (re-run it if the code is updated).
 
+### Optional: NixOS
+
+On NixOS the standard `uv sync` / `uv run` path fails, because uv's downloaded Pythons expect a
+normal FHS layout and the manylinux wheels can't find `libstdc++`/`libz`. If (and only if) you
+are on NixOS, use the bundled `run-nixos.sh` instead, which works around both:
+
+```bash
+./run-nixos.sh --data-dir data --output-dir output --seconds-per-frame 600 --um-per-pixel 0.2125
+```
+
+Everywhere else, ignore that script and use the `uv run` commands below.
+
 ## 4. Run it on the bundled example data
 
-The `data/` folder ships with several example `.tif` movies. Analyze them with:
+The `data/` folder ships with 13 example `.tif` movies. Analyze them with:
 
 ```bash
 uv run droplet-fusion \
@@ -73,8 +85,8 @@ the one being processed (loading → segmenting → measuring & fitting → rend
 can always see that the program is working:
 
 ```text
-Found 9 movie(s) in data. Analyzing...
-Analyzing movies:  67%|██████▋   | 6/9 [00:06<00:03,  1.1s/movie, example_07.tif: rendering video]
+Found 13 movie(s) in data. Analyzing...
+Analyzing movies:  69%|██████▉   | 9/13 [00:09<00:04,  1.1s/movie, 20260902_randomSE001_10.tif: rendering video]
 ```
 
 When it finishes you'll see a message listing what was written. Results land in the
@@ -86,7 +98,7 @@ writing the terminal output to a log file).
 
 Inside `--output-dir` you get **one folder per movie**, plus dataset-level summary files:
 
-Per movie (e.g. `output/example01/`):
+Per movie (e.g. `output/20260902_randomSE001_02/`):
 
 | File | What it is |
 | --- | --- |
@@ -103,6 +115,7 @@ Dataset-level (top of `--output-dir`):
 | --- | --- |
 | `summary_results.csv` | One row per movie with the key fitted numbers |
 | `inverse_capillary_velocity_summary.png` | Summary plot across all movies |
+| `tau_vs_radius.png` | Scatter plot of tau_fusion vs final droplet radius across all movies |
 | `run_config.json` | Every setting used for this run (for reproducibility) |
 | `run_log.txt` | Log of what happened |
 

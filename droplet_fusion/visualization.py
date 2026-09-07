@@ -164,6 +164,142 @@ def write_inverse_capillary_velocity_summary_plot(
     }
 
 
+def _bootstrap_slope_through_origin(
+    radii: np.ndarray,
+    taus: np.ndarray,
+    *,
+    n_resamples: int = 10000,
+    seed: int = 0,
+) -> tuple[float, float, float]:
+    """Bootstrap the through-origin slope by resampling movies with replacement.
+
+    The per-movie ``tau_fusion_std_s`` values understate the true parameter
+    uncertainty, because the AR residuals within a movie are serially correlated
+    and so carry less independent information than the frame count suggests.
+    Resampling whole movies sidesteps that: the spread of the resampled slopes
+    reflects the movie-to-movie scatter actually observed, which is what the
+    dataset-level slope is really estimated from.
+
+    Returns ``(std, ci95_low, ci95_high)``, all NaN when there are too few movies.
+    """
+
+    n_movies = int(radii.size)
+    if n_movies < 3:
+        return float("nan"), float("nan"), float("nan")
+
+    rng = np.random.default_rng(seed)
+    index = rng.integers(0, n_movies, size=(n_resamples, n_movies))
+    resampled_radii = radii[index]
+    resampled_taus = taus[index]
+    denominator = np.sum(resampled_radii**2, axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        slopes = np.sum(resampled_radii * resampled_taus, axis=1) / denominator
+    slopes = slopes[np.isfinite(slopes)]
+    if slopes.size == 0:
+        return float("nan"), float("nan"), float("nan")
+
+    low, high = (float(value) for value in np.percentile(slopes, [2.5, 97.5]))
+    return float(np.std(slopes, ddof=1)), low, high
+
+
+def write_tau_vs_radius_plot(
+    path: Path | str,
+    summary_rows: list[dict[str, Any]],
+) -> tuple[Path, dict[str, float | int]]:
+    """Write a dataset-level scatter plot of tau_fusion against final droplet radius."""
+
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    radii = []
+    taus = []
+    tau_errors = []
+    radius_errors = []
+    omitted_labels = []
+    for row in summary_rows:
+        radius = _float_or_nan(row.get("R_um"))
+        tau = _float_or_nan(row.get("tau_fusion_s"))
+        filename = str(row.get("filename", "movie"))
+        if np.isfinite(radius) and radius > 0.0 and np.isfinite(tau) and tau > 0.0:
+            radii.append(float(radius))
+            taus.append(float(tau))
+            tau_std = _float_or_nan(row.get("tau_fusion_std_s"))
+            tau_errors.append(float(tau_std) if np.isfinite(tau_std) and tau_std >= 0.0 else 0.0)
+            radius_std = _float_or_nan(row.get("R_um_std"))
+            radius_errors.append(float(radius_std) if np.isfinite(radius_std) and radius_std >= 0.0 else 0.0)
+        else:
+            omitted_labels.append(filename)
+
+    fig, ax = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
+    if radii:
+        radius_array = np.asarray(radii, dtype=np.float64)
+        tau_array = np.asarray(taus, dtype=np.float64)
+        error_array = np.asarray(tau_errors, dtype=np.float64)
+        radius_error_array = np.asarray(radius_errors, dtype=np.float64)
+        slope = float(np.sum(radius_array * tau_array) / np.sum(radius_array**2))
+        slope_std, slope_low, slope_high = _bootstrap_slope_through_origin(radius_array, tau_array)
+        if np.any(error_array > 0.0) or np.any(radius_error_array > 0.0):
+            ax.errorbar(
+                radius_array,
+                tau_array,
+                yerr=error_array if np.any(error_array > 0.0) else None,
+                xerr=radius_error_array if np.any(radius_error_array > 0.0) else None,
+                fmt="none",
+                ecolor="#4c78a8",
+                elinewidth=1.0,
+                capsize=3.0,
+                alpha=0.8,
+                zorder=2,
+            )
+        ax.scatter(radius_array, tau_array, s=42, color="#4c78a8", zorder=3)
+        line_radius = np.linspace(0.0, float(np.max(radius_array)) * 1.05, 100)
+        ax.plot(
+            line_radius,
+            slope * line_radius,
+            color="#1f1f1f",
+            linewidth=1.7,
+            label=(
+                f"tau = {_format_float(slope)} s/um * R"
+                if not np.isfinite(slope_std)
+                else f"tau = ({_format_float(slope)} +/- {_format_float(slope_std)}) s/um * R"
+            ),
+        )
+        ax.set_xlim(left=0.0)
+        ax.set_ylim(bottom=0.0)
+        ax.legend(loc="best", fontsize=8.5)
+        correlation = (
+            float(np.corrcoef(radius_array, tau_array)[0, 1]) if len(radii) > 1 else float("nan")
+        )
+    else:
+        slope = float("nan")
+        correlation = float("nan")
+        slope_std = float("nan")
+        slope_low = float("nan")
+        slope_high = float("nan")
+        ax.text(0.5, 0.5, "No finite successful values", transform=ax.transAxes, ha="center", va="center")
+
+    ax.set_title("Fusion time vs final droplet radius")
+    ax.set_xlabel("Final droplet radius R (um)")
+    ax.set_ylabel("tau_fusion (s)")
+    ax.grid(True, color="#d8d8d8", linewidth=0.8, alpha=0.7)
+    subtitle = f"n={len(radii)}, slope={_format_float(slope)} s/um, r={_format_float(correlation)}"
+    if omitted_labels:
+        subtitle += f", omitted={len(omitted_labels)}"
+    ax.text(0.01, 0.98, subtitle, transform=ax.transAxes, ha="left", va="top", fontsize=9.0)
+
+    fig.savefig(out_path, dpi=160)
+    plt.close(fig)
+    return out_path, {
+        "n_points": len(radii),
+        "n_omitted": len(omitted_labels),
+        "slope_tau_per_radius_s_per_um": slope,
+        "slope_bootstrap_std_s_per_um": slope_std,
+        "slope_bootstrap_ci95_low_s_per_um": slope_low,
+        "slope_bootstrap_ci95_high_s_per_um": slope_high,
+        "pearson_r": correlation,
+    }
+
+
 def write_overlay_video(
     path: Path | str,
     stack: np.ndarray,

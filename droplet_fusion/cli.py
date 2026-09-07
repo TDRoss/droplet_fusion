@@ -78,6 +78,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional candidate-mask repair; convex_hull fills concavities in each candidate mask.",
     )
     parser.add_argument(
+        "--growth-floor-mode",
+        choices=["image_threshold", "frame_percentile"],
+        default="image_threshold",
+        help=(
+            "How far flood-fill growth candidates may extend below their seed. "
+            "image_threshold stops growth at the droplet/background threshold "
+            "(correct for sharp-edged droplets); frame_percentile lets growth "
+            "reach frame-percentile levels, for droplets with a genuinely dim "
+            "outer rim around a much brighter core."
+        ),
+    )
+    parser.add_argument(
         "--write-segmentation-qc",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -173,6 +185,7 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
             mask_closing_radius_px=args.mask_closing_radius_px,
             boundary_threshold_percentile=args.boundary_threshold_percentile,
             outer_envelope_mode=args.outer_envelope_mode,
+            growth_floor_mode=args.growth_floor_mode,
             write_segmentation_qc=args.write_segmentation_qc,
         ),
         fitting=FitConfig(
