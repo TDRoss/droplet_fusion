@@ -127,8 +127,19 @@ Put your `.tif` / `.tiff` movies in a folder and point `--data-dir` at it.
 **single-channel** time series (a grayscale image stack, not multi-channel/RGB) cropped tightly
 around a **single droplet pair**, where:
 
+- the two droplets are **roughly equal in size**,
 - the **first frame** shows the two droplets **already touching** (fusion has just begun), and
-- the **last frame** shows them **fully merged into a single circular droplet**.
+- the merger has **fully completed** by the **last frame**, leaving a single circular droplet.
+
+**The droplet pair must be roughly equal in size.** The relaxation time `tau_fusion` is extracted
+from a model of two equally sized droplets coalescing, so the fitted numbers (and the inverse
+capillary velocity derived from them) are **only valid for fusion events between droplets of
+comparable radius**. Pairs with a clearly larger and a clearly smaller droplet will still produce
+a fit, but that fit is not physically meaningful — exclude those movies.
+
+The last frame does **not** have to be the exact frame where the merger completes; extra frames
+after the droplet has relaxed into a circle are fine. What matters is that the merger has finished
+**by** the last frame, so that the full relaxation is captured within the movie.
 
 Partial droplets from neighboring pairs may appear in the background **only if** they touch the
 image border and are spatially distinct (clearly separated) from the merging pair of interest;
@@ -175,19 +186,22 @@ with neighboring frames, writing a `segmentation_qc.csv` per movie. Add
 it is opt-in because it can over-fill genuinely necked early-fusion shapes.
 
 **How the fit window is chosen (and why it's robust).** The pipeline fits the post-fusion
-aspect ratio to an exponential relaxation, `AR(t) = 1 + A·exp(−t/τ)`. Both ends of the fit
-window are picked automatically so that the fitted relaxation time `τ` does not depend on how
-each movie happened to be cropped in time:
+aspect ratio to an exponential relaxation, `AR(t) = 1 + A·exp(−t/τ)`. The two ends of the fit
+window are chosen so that the fitted relaxation time `τ` reflects the measured relaxation rather
+than how many extra frames happen to be in the stack:
 
-- **Start — `--fit-start-mode decay_onset` (default).** A cropped movie does not necessarily
-  begin exactly at the moment the droplets touch: it may open a few frames early, on a near-flat
-  "pre-collapse plateau" where the aspect ratio barely changes, and the per-frame AR is noisy.
-  `decay_onset` lightly smooths AR with a short (3-frame) moving average, finds the smoothed peak
-  (maximum elongation), then walks *forward* to the first frame that has dropped about 5% of the
-  way from that peak toward the post-fusion floor. That frame — the start of the *sustained*
-  decay — becomes `t = 0`. This automatically detects the true onset of merger and is insensitive
-  both to exactly where the movie was cropped at the start and to single-frame noise, unlike
-  `max_AR`, which pins `t = 0` to one (noise-sensitive) peak frame.
+- **Start — `--fit-start-mode first_valid` (default).** The fit begins at the **first measured
+  frame** of the movie, which becomes `t = 0`. This assumes each movie is cropped to start at the
+  moment the droplets touch (see [section 6](#6-run-it-on-your-own-data)), so the earliest frames
+  carry the fastest, most informative part of the decay and none of them are discarded.
+
+  If your movies instead open a few frames *before* contact — on a near-flat "pre-collapse
+  plateau" where the aspect ratio barely changes — use `--fit-start-mode decay_onset`. It lightly
+  smooths AR with a short (3-frame) moving average, finds the smoothed peak (maximum elongation),
+  then walks *forward* to the first frame that has dropped about 5% of the way from that peak
+  toward the post-fusion floor, and starts there. `max_AR` pins `t = 0` to the single
+  peak-aspect-ratio frame, which is more noise-sensitive; `manual` reads the start frame per movie
+  from `--manual-fit-starts`.
 
 - **End — `--trim-tail-to-floor` (default on) with `--tail-floor-fraction` (default `0.1`).**
   Once the droplets have merged, AR flattens near 1 (a circle) for the rest of the movie. Those
@@ -240,7 +254,7 @@ valid frame (no relaxation frames follow it).
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `--fit-start-mode {max_AR,manual,first_valid,decay_onset}` | `decay_onset` | Which frame starts the fit window. `decay_onset`: top of the sustained decay, skipping pre-collapse plateaus (robust to cropping/noise). `max_AR`: the single peak-aspect-ratio frame. `first_valid`: the first measured frame. `manual`: read starts from `--manual-fit-starts`. |
+| `--fit-start-mode {max_AR,manual,first_valid,decay_onset}` | `first_valid` | Which frame starts the fit window. `first_valid`: the first measured frame (assumes the movie starts at contact). `decay_onset`: top of the sustained decay, skipping pre-collapse plateaus. `max_AR`: the single peak-aspect-ratio frame. `manual`: read starts from `--manual-fit-starts`. |
 | `--manual-fit-starts PATH` | none | CSV with `filename,fit_start_frame` columns. Required when `--fit-start-mode manual`. |
 | `--trim-tail-to-floor / --no-trim-tail-to-floor` | on | Drop the near-circular AR tail so it doesn't dominate the fit residual. |
 | `--tail-floor-fraction FLOAT` | `0.1` | Keep fit frames down to within this fraction of the descent floor before trimming the tail. |

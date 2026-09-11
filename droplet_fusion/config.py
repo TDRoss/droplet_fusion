@@ -70,7 +70,7 @@ class SegmentationConfig:
 class FitConfig:
     """Parameters for future post-fusion AR relaxation fitting."""
 
-    fit_start_mode: FitStartMode = "decay_onset"
+    fit_start_mode: FitStartMode = "first_valid"
     manual_fit_starts: Path | None = None
     n_final_frames_for_r: int = 5
     min_fit_r2_warning: float = 0.8

@@ -98,12 +98,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fit-start-mode",
         choices=["max_AR", "manual", "first_valid", "decay_onset"],
-        default="decay_onset",
+        default="first_valid",
         help=(
             "Rule for selecting the first frame used in AR fitting. The default "
-            "'decay_onset' smooths AR and starts at the top of the sustained decay, "
-            "skipping pre-collapse plateaus so the fit is robust to temporal cropping "
-            "and noise."
+            "'first_valid' starts at the first measured frame, which is correct when "
+            "each movie is cropped to begin at the moment of contact. Use "
+            "'decay_onset' instead when movies open with a pre-collapse plateau: it "
+            "smooths AR and starts at the top of the sustained decay."
         ),
     )
     parser.add_argument(
