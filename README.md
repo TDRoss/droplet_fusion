@@ -60,7 +60,7 @@ normal FHS layout and the manylinux wheels can't find `libstdc++`/`libz`. If (an
 are on NixOS, use the bundled `run-nixos.sh` instead, which works around both:
 
 ```bash
-./run-nixos.sh --data-dir data --output-dir output --seconds-per-frame 600 --um-per-pixel 0.2125
+./run-nixos.sh --data-dir data --output-dir output --seconds-per-frame 90 --um-per-pixel 0.21167
 ```
 
 Everywhere else, ignore that script and use the `uv run` commands below.
@@ -73,8 +73,8 @@ The `data/` folder ships with 13 example `.tif` movies. Analyze them with:
 uv run droplet-fusion \
     --data-dir data \
     --output-dir output \
-    --seconds-per-frame 600 \
-    --um-per-pixel 0.2125 \
+    --seconds-per-frame 90 \
+    --um-per-pixel 0.21167 \
     --overwrite
 ```
 
@@ -155,8 +155,8 @@ central pair will corrupt the measurements.
 uv run droplet-fusion \
     --data-dir /path/to/your/movies \
     --output-dir my_results \
-    --seconds-per-frame 600 \
-    --um-per-pixel 0.2125 \
+    --seconds-per-frame 90 \
+    --um-per-pixel 0.21167 \
     --overwrite
 ```
 
